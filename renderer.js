@@ -128,6 +128,9 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('format', formatSelect.value)
   );
 
+  // Draws the recording (screen + camera); set while recording
+  let compositor = null;
+
   // Add minimize and close buttons for window mode
   if (isWindowMode) {
     const controlsDiv = document.createElement('div');
@@ -181,10 +184,9 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('Audio checkbox found:', !!audioCheckbox);
   console.log('Audio device select found:', !!audioDeviceSelect);
 
-  let mediaRecorder;
-  let recordingFormat;
+  let mediaRecorder = null;
+  let recordingFormat = null;
   let activeTracks = [];
-  let compositor = null;
   let cameraBubble = null;
   let recordedChunks = [];
   let isRecordingCancelled = false;
@@ -357,9 +359,9 @@ document.addEventListener('DOMContentLoaded', () => {
         bubbleDisplay.bounds.x === display.bounds.x &&
         bubbleDisplay.bounds.y === display.bounds.y;
 
-      let x;
-      let y;
-      let scale;
+      let x = 0;
+      let y = 0;
+      let scale = 1;
       if (onRecordedScreen) {
         const src = area
           ? area.rect
@@ -466,13 +468,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (cameraFrame && cameraBubble) drawCamera(cameraFrame);
     }
 
-    // Reads frames from a track, keeping only the latest one open
+    // Reads frames from a track until the reader is cancelled
     async function pump(reader, onFrame) {
       try {
-        while (running) {
-          const { value: frame, done } = await reader.read();
-          if (done) break;
-          onFrame(frame);
+        let result = await reader.read();
+        while (!result.done) {
+          onFrame(result.value);
+          result = await reader.read();
         }
       } catch (error) {
         console.error('Error reading video frames:', error);
@@ -514,8 +516,14 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
+    function cancelReader(reader) {
+      reader
+        .cancel()
+        .catch((error) => console.warn('Error cancelling frame reader:', error));
+    }
+
     function stopCamera() {
-      if (cameraReader) cameraReader.cancel().catch(() => {});
+      if (cameraReader) cancelReader(cameraReader);
       if (cameraTrack) cameraTrack.stop();
       if (cameraFrame) cameraFrame.close();
       cameraReader = null;
@@ -535,7 +543,7 @@ document.addEventListener('DOMContentLoaded', () => {
       stop() {
         running = false;
         stopCamera();
-        screenReader.cancel().catch(() => {});
+        cancelReader(screenReader);
         if (screenFrame) screenFrame.close();
         screenFrame = null;
         outputTrack.stop();

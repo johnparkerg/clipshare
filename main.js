@@ -34,8 +34,8 @@ let mainWindow = null;
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-  app.quit();
-  return;
+  // Another instance is already running; nothing has been set up yet
+  process.exit(0);
 }
 
 // Initialize AutoLaunch
